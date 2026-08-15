@@ -4,6 +4,7 @@ const rateLimit = require("express-rate-limit");
 const {
     register,
     login,
+    refreshAccessToken,
     logout
 } = require("../controllers/authController");
 
@@ -44,6 +45,12 @@ router.post(
     loginValidation,
     validate,
     login
+);
+
+// Refresh access token
+router.post(
+    "/refresh",
+    refreshAccessToken
 );
 
 // Current authenticated user
