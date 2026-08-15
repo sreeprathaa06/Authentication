@@ -2,7 +2,8 @@ const express = require("express");
 
 const {
     register,
-    login
+    login,
+    logout
 } = require("../controllers/authController");
 
 const protect = require("../middleware/authMiddleware");
@@ -22,5 +23,8 @@ router.get("/me", protect, async (req, res) => {
         user: req.user
     });
 });
+
+// Logout
+router.post("/logout", logout);
 
 module.exports = router;
