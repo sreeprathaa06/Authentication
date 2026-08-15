@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 
 const {
     register,
@@ -17,6 +18,17 @@ const validate = require("../middleware/validationMiddleware");
 
 const router = express.Router();
 
+// Login rate limiter
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        message: "Too many login attempts. Please try again later."
+    }
+});
+
 // Register
 router.post(
     "/register",
@@ -28,16 +40,17 @@ router.post(
 // Login
 router.post(
     "/login",
+    loginLimiter,
     loginValidation,
     validate,
     login
 );
 
-// Current user
+// Current authenticated user
 router.get(
     "/me",
     protect,
-    async (req, res) => {
+    (req, res) => {
         res.status(200).json({
             message: "You are authenticated",
             user: req.user
@@ -46,6 +59,9 @@ router.get(
 );
 
 // Logout
-router.post("/logout", logout);
+router.post(
+    "/logout",
+    logout
+);
 
 module.exports = router;

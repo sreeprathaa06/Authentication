@@ -1,28 +1,21 @@
-const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
+const User = require("../models/User");
 
 // =========================
 // REGISTER
 // =========================
-
 const register = async (req, res) => {
     try {
         const { name, email, password } = req.body;
-
-        // Validate input
-        if (!name || !email || !password) {
-            return res.status(400).json({
-                message: "Name, email and password are required"
-            });
-        }
 
         // Check if user already exists
         const existingUser = await User.findOne({ email });
 
         if (existingUser) {
             return res.status(409).json({
-                message: "User already exists"
+                message: "User with this email already exists"
             });
         }
 
@@ -33,10 +26,10 @@ const register = async (req, res) => {
         const user = await User.create({
             name,
             email,
-            password: hashedPassword
+            password: hashedPassword,
+            role: "user"
         });
 
-        // Send response
         res.status(201).json({
             message: "User registered successfully",
             user: {
@@ -51,26 +44,17 @@ const register = async (req, res) => {
         console.error("Registration error:", error);
 
         res.status(500).json({
-            message: "Server error"
+            message: "Server error during registration"
         });
     }
 };
 
-
 // =========================
 // LOGIN
 // =========================
-
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        // Validate input
-        if (!email || !password) {
-            return res.status(400).json({
-                message: "Email and password are required"
-            });
-        }
 
         // Find user
         const user = await User.findOne({ email });
@@ -93,7 +77,7 @@ const login = async (req, res) => {
             });
         }
 
-        // Generate JWT
+        // Create JWT
         const token = jwt.sign(
             {
                 userId: user._id,
@@ -105,7 +89,7 @@ const login = async (req, res) => {
             }
         );
 
-        // Store JWT in HTTP-only cookie
+        // Store JWT in secure HTTP-only cookie
         res.cookie("token", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -113,7 +97,6 @@ const login = async (req, res) => {
             maxAge: 60 * 60 * 1000
         });
 
-        // Send response
         res.status(200).json({
             message: "Login successful",
             user: {
@@ -128,10 +111,14 @@ const login = async (req, res) => {
         console.error("Login error:", error);
 
         res.status(500).json({
-            message: "Server error"
+            message: "Server error during login"
         });
     }
 };
+
+// =========================
+// LOGOUT
+// =========================
 const logout = async (req, res) => {
     try {
         res.clearCookie("token", {
@@ -143,15 +130,15 @@ const logout = async (req, res) => {
         res.status(200).json({
             message: "Logout successful"
         });
+
     } catch (error) {
         console.error("Logout error:", error);
 
         res.status(500).json({
-            message: "Server error"
+            message: "Server error during logout"
         });
     }
 };
-
 
 module.exports = {
     register,

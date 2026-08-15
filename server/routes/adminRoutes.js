@@ -5,6 +5,7 @@ const authorize = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
+// Admin dashboard
 router.get(
     "/dashboard",
     protect,
