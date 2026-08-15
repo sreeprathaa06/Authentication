@@ -13,6 +13,7 @@ const cookieParser = require("cookie-parser");
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 // Load environment variables
 dotenv.config();
@@ -29,6 +30,9 @@ app.use(cookieParser());
 
 // Authentication routes
 app.use("/api/auth", authRoutes);
+
+// Admin routes
+app.use("/api/admin", adminRoutes);
 
 // Root test route
 app.get("/", (req, res) => {
