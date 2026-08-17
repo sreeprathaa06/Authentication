@@ -19,6 +19,7 @@ const validate = require("../middleware/validationMiddleware");
 
 const router = express.Router();
 
+
 // Login rate limiter
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -30,6 +31,7 @@ const loginLimiter = rateLimit({
     }
 });
 
+
 // Register
 router.post(
     "/register",
@@ -37,6 +39,7 @@ router.post(
     validate,
     register
 );
+
 
 // Login
 router.post(
@@ -47,13 +50,15 @@ router.post(
     login
 );
 
-// Refresh access token
+
+// Refresh tokens
 router.post(
     "/refresh",
     refreshAccessToken
 );
 
-// Current authenticated user
+
+// Current user
 router.get(
     "/me",
     protect,
@@ -65,10 +70,12 @@ router.get(
     }
 );
 
+
 // Logout
 router.post(
     "/logout",
     logout
 );
+
 
 module.exports = router;

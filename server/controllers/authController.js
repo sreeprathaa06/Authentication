@@ -1,15 +1,20 @@
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
+const RefreshToken = require("../models/RefreshToken");
 
 const {
     generateAccessToken,
-    generateRefreshToken
+    generateRefreshToken,
+    hashToken
 } = require("../utils/tokenUtils");
+
 
 // =========================
 // REGISTER
 // =========================
+
 const register = async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -50,9 +55,11 @@ const register = async (req, res) => {
     }
 };
 
+
 // =========================
 // LOGIN
 // =========================
+
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -76,9 +83,19 @@ const login = async (req, res) => {
             });
         }
 
-        // Generate tokens
         const accessToken = generateAccessToken(user);
         const refreshToken = generateRefreshToken(user);
+
+        // Store only the hash in MongoDB
+        const tokenHash = hashToken(refreshToken);
+
+        await RefreshToken.create({
+            userId: user._id,
+            tokenHash,
+            expiresAt: new Date(
+                Date.now() + 7 * 24 * 60 * 60 * 1000
+            )
+        });
 
         // Access token cookie
         res.cookie("accessToken", accessToken, {
@@ -115,9 +132,11 @@ const login = async (req, res) => {
     }
 };
 
+
 // =========================
 // REFRESH ACCESS TOKEN
 // =========================
+
 const refreshAccessToken = async (req, res) => {
     try {
         const refreshToken = req.cookies.refreshToken;
@@ -128,8 +147,7 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
-        const jwt = require("jsonwebtoken");
-
+        // Verify refresh token
         const decoded = jwt.verify(
             refreshToken,
             process.env.REFRESH_TOKEN_SECRET
@@ -141,6 +159,31 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
+        // Hash incoming token
+        const tokenHash = hashToken(refreshToken);
+
+        // Find active token session
+        const storedToken = await RefreshToken.findOne({
+            tokenHash,
+            revoked: false
+        });
+
+        if (!storedToken) {
+            return res.status(401).json({
+                message: "Refresh token has been revoked or is invalid"
+            });
+        }
+
+        // Check expiry
+        if (storedToken.expiresAt < new Date()) {
+            storedToken.revoked = true;
+            await storedToken.save();
+
+            return res.status(401).json({
+                message: "Refresh token has expired"
+            });
+        }
+
         const user = await User.findById(decoded.userId);
 
         if (!user) {
@@ -149,8 +192,26 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
-        const newAccessToken = generateAccessToken(user);
+        // Revoke old refresh token
+        storedToken.revoked = true;
+        await storedToken.save();
 
+        // Generate new tokens
+        const newAccessToken = generateAccessToken(user);
+        const newRefreshToken = generateRefreshToken(user);
+
+        // Store new refresh token hash
+        const newTokenHash = hashToken(newRefreshToken);
+
+        await RefreshToken.create({
+            userId: user._id,
+            tokenHash: newTokenHash,
+            expiresAt: new Date(
+                Date.now() + 7 * 24 * 60 * 60 * 1000
+            )
+        });
+
+        // Set new access token
         res.cookie("accessToken", newAccessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -158,8 +219,16 @@ const refreshAccessToken = async (req, res) => {
             maxAge: 15 * 60 * 1000
         });
 
+        // Set new refresh token
+        res.cookie("refreshToken", newRefreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
         res.status(200).json({
-            message: "Access token refreshed successfully"
+            message: "Tokens refreshed successfully"
         });
 
     } catch (error) {
@@ -171,11 +240,30 @@ const refreshAccessToken = async (req, res) => {
     }
 };
 
+
 // =========================
 // LOGOUT
 // =========================
+
 const logout = async (req, res) => {
     try {
+        const refreshToken = req.cookies.refreshToken;
+
+        // Revoke refresh token in database
+        if (refreshToken) {
+            const tokenHash = hashToken(refreshToken);
+
+            await RefreshToken.findOneAndUpdate(
+                {
+                    tokenHash
+                },
+                {
+                    revoked: true
+                }
+            );
+        }
+
+        // Clear cookies
         res.clearCookie("accessToken", {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -200,6 +288,7 @@ const logout = async (req, res) => {
         });
     }
 };
+
 
 module.exports = {
     register,

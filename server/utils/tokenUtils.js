@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
-// Create short-lived access token
+// Generate access token
 const generateAccessToken = (user) => {
     return jwt.sign(
         {
@@ -14,7 +15,7 @@ const generateAccessToken = (user) => {
     );
 };
 
-// Create long-lived refresh token
+// Generate refresh token
 const generateRefreshToken = (user) => {
     return jwt.sign(
         {
@@ -29,7 +30,16 @@ const generateRefreshToken = (user) => {
     );
 };
 
+// Hash refresh token before storing it
+const hashToken = (token) => {
+    return crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+};
+
 module.exports = {
     generateAccessToken,
-    generateRefreshToken
+    generateRefreshToken,
+    hashToken
 };
