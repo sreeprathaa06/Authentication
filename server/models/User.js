@@ -27,11 +27,13 @@ const userSchema = new mongoose.Schema(
             default: "user"
         },
 
+        // Number of consecutive failed login attempts
         failedLoginAttempts: {
             type: Number,
             default: 0
         },
 
+        // Account remains locked until this time
         lockUntil: {
             type: Date,
             default: null
