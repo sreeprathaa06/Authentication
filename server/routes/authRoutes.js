@@ -5,7 +5,9 @@ const {
     register,
     login,
     refreshAccessToken,
-    logout
+    logout,
+    forgotPassword,
+    resetPassword
 } = require("../controllers/authController");
 
 const protect = require("../middleware/authMiddleware");
@@ -20,19 +22,42 @@ const validate = require("../middleware/validationMiddleware");
 const router = express.Router();
 
 
-// Login rate limiter
+// ======================================================
+// LOGIN RATE LIMITER
+// ======================================================
+
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
+
     message: {
         message: "Too many login attempts. Please try again later."
     }
 });
 
 
-// Register
+// ======================================================
+// PASSWORD RESET RATE LIMITER
+// ======================================================
+
+const passwordResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+
+    message: {
+        message: "Too many password reset requests. Please try again later."
+    }
+});
+
+
+// ======================================================
+// REGISTER
+// ======================================================
+
 router.post(
     "/register",
     registerValidation,
@@ -41,7 +66,10 @@ router.post(
 );
 
 
-// Login
+// ======================================================
+// LOGIN
+// ======================================================
+
 router.post(
     "/login",
     loginLimiter,
@@ -51,31 +79,69 @@ router.post(
 );
 
 
-// Refresh tokens
+// ======================================================
+// REFRESH ACCESS TOKEN
+// ======================================================
+
 router.post(
     "/refresh",
     refreshAccessToken
 );
 
 
-// Current user
+// ======================================================
+// CURRENT AUTHENTICATED USER
+// ======================================================
+
 router.get(
     "/me",
     protect,
     (req, res) => {
+
         res.status(200).json({
             message: "You are authenticated",
+
             user: req.user
         });
+
     }
 );
 
 
-// Logout
+// ======================================================
+// LOGOUT
+// ======================================================
+
 router.post(
     "/logout",
     logout
 );
 
+
+// ======================================================
+// FORGOT PASSWORD
+// ======================================================
+
+router.post(
+    "/forgot-password",
+    passwordResetLimiter,
+    forgotPassword
+);
+
+
+// ======================================================
+// RESET PASSWORD
+// ======================================================
+
+router.post(
+    "/reset-password",
+    passwordResetLimiter,
+    resetPassword
+);
+
+
+// ======================================================
+// EXPORT ROUTER
+// ======================================================
 
 module.exports = router;

@@ -1,33 +1,62 @@
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
 const RefreshToken = require("../models/RefreshToken");
-
-const {
-    generateAccessToken,
-    generateRefreshToken,
-    hashToken
-} = require("../utils/tokenUtils");
+const PasswordResetToken = require("../models/PasswordResetToken");
 
 
-// =========================
+// ======================================================
+// HELPER: CREATE ACCESS TOKEN
+// ======================================================
+
+const generateAccessToken = (user) => {
+    return jwt.sign(
+        {
+            id: user._id,
+            role: user.role
+        },
+        process.env.JWT_SECRET,
+        {
+            expiresIn: "15m"
+        }
+    );
+};
+
+
+// ======================================================
+// HELPER: CREATE REFRESH TOKEN
+// ======================================================
+
+const generateRefreshToken = () => {
+    return crypto.randomBytes(64).toString("hex");
+};
+
+
+// ======================================================
 // REGISTER
-// =========================
+// ======================================================
 
 const register = async (req, res) => {
     try {
         const { name, email, password } = req.body;
 
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                message: "Name, email and password are required"
+            });
+        }
+
         const existingUser = await User.findOne({ email });
 
         if (existingUser) {
             return res.status(409).json({
-                message: "User with this email already exists"
+                message: "User already exists"
             });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(password, 12);
 
         const user = await User.create({
             name,
@@ -47,7 +76,7 @@ const register = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Registration error:", error);
+        console.error("Register error:", error);
 
         res.status(500).json({
             message: "Server error during registration"
@@ -56,13 +85,19 @@ const register = async (req, res) => {
 };
 
 
-// =========================
+// ======================================================
 // LOGIN
-// =========================
+// ======================================================
 
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password are required"
+            });
+        }
 
         const user = await User.findOne({ email });
 
@@ -72,32 +107,36 @@ const login = async (req, res) => {
             });
         }
 
-        const isPasswordCorrect = await bcrypt.compare(
+        const passwordMatch = await bcrypt.compare(
             password,
             user.password
         );
 
-        if (!isPasswordCorrect) {
+        if (!passwordMatch) {
             return res.status(401).json({
                 message: "Invalid email or password"
             });
         }
 
+        // Create access token
         const accessToken = generateAccessToken(user);
-        const refreshToken = generateRefreshToken(user);
 
-        // Store only the hash in MongoDB
-        const tokenHash = hashToken(refreshToken);
+        // Create refresh token
+        const refreshToken = generateRefreshToken();
+
+        // Hash refresh token before storing it
+        const refreshTokenHash = crypto
+            .createHash("sha256")
+            .update(refreshToken)
+            .digest("hex");
 
         await RefreshToken.create({
             userId: user._id,
-            tokenHash,
-            expiresAt: new Date(
-                Date.now() + 7 * 24 * 60 * 60 * 1000
-            )
+            tokenHash: refreshTokenHash,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         });
 
-        // Access token cookie
+        // Store tokens in HTTP-only cookies
         res.cookie("accessToken", accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -105,7 +144,6 @@ const login = async (req, res) => {
             maxAge: 15 * 60 * 1000
         });
 
-        // Refresh token cookie
         res.cookie("refreshToken", refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -133,9 +171,9 @@ const login = async (req, res) => {
 };
 
 
-// =========================
-// REFRESH ACCESS TOKEN
-// =========================
+// ======================================================
+// REFRESH TOKEN
+// ======================================================
 
 const refreshAccessToken = async (req, res) => {
     try {
@@ -147,71 +185,61 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
-        // Verify refresh token
-        const decoded = jwt.verify(
-            refreshToken,
-            process.env.REFRESH_TOKEN_SECRET
-        );
+        const tokenHash = crypto
+            .createHash("sha256")
+            .update(refreshToken)
+            .digest("hex");
 
-        if (decoded.type !== "refresh") {
+        const storedToken = await RefreshToken.findOne({
+            tokenHash
+        });
+
+        if (!storedToken) {
             return res.status(401).json({
                 message: "Invalid refresh token"
             });
         }
 
-        // Hash incoming token
-        const tokenHash = hashToken(refreshToken);
-
-        // Find active token session
-        const storedToken = await RefreshToken.findOne({
-            tokenHash,
-            revoked: false
-        });
-
-        if (!storedToken) {
+        if (storedToken.revoked) {
             return res.status(401).json({
-                message: "Refresh token has been revoked or is invalid"
+                message: "Refresh token has been revoked"
             });
         }
 
-        // Check expiry
         if (storedToken.expiresAt < new Date()) {
-            storedToken.revoked = true;
-            await storedToken.save();
-
             return res.status(401).json({
                 message: "Refresh token has expired"
             });
         }
 
-        const user = await User.findById(decoded.userId);
+        const user = await User.findById(storedToken.userId);
 
         if (!user) {
             return res.status(401).json({
-                message: "User no longer exists"
+                message: "User not found"
             });
         }
 
-        // Revoke old refresh token
+        // Revoke old token
         storedToken.revoked = true;
         await storedToken.save();
 
         // Generate new tokens
         const newAccessToken = generateAccessToken(user);
-        const newRefreshToken = generateRefreshToken(user);
 
-        // Store new refresh token hash
-        const newTokenHash = hashToken(newRefreshToken);
+        const newRefreshToken = generateRefreshToken();
+
+        const newRefreshTokenHash = crypto
+            .createHash("sha256")
+            .update(newRefreshToken)
+            .digest("hex");
 
         await RefreshToken.create({
             userId: user._id,
-            tokenHash: newTokenHash,
-            expiresAt: new Date(
-                Date.now() + 7 * 24 * 60 * 60 * 1000
-            )
+            tokenHash: newRefreshTokenHash,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         });
 
-        // Set new access token
         res.cookie("accessToken", newAccessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -219,7 +247,6 @@ const refreshAccessToken = async (req, res) => {
             maxAge: 15 * 60 * 1000
         });
 
-        // Set new refresh token
         res.cookie("refreshToken", newRefreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -234,47 +261,36 @@ const refreshAccessToken = async (req, res) => {
     } catch (error) {
         console.error("Refresh token error:", error);
 
-        return res.status(401).json({
-            message: "Invalid or expired refresh token"
+        res.status(500).json({
+            message: "Server error while refreshing token"
         });
     }
 };
 
 
-// =========================
+// ======================================================
 // LOGOUT
-// =========================
+// ======================================================
 
 const logout = async (req, res) => {
     try {
         const refreshToken = req.cookies.refreshToken;
 
-        // Revoke refresh token in database
         if (refreshToken) {
-            const tokenHash = hashToken(refreshToken);
+            const tokenHash = crypto
+                .createHash("sha256")
+                .update(refreshToken)
+                .digest("hex");
 
             await RefreshToken.findOneAndUpdate(
-                {
-                    tokenHash
-                },
-                {
-                    revoked: true
-                }
+                { tokenHash },
+                { revoked: true }
             );
         }
 
-        // Clear cookies
-        res.clearCookie("accessToken", {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax"
-        });
+        res.clearCookie("accessToken");
 
-        res.clearCookie("refreshToken", {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax"
-        });
+        res.clearCookie("refreshToken");
 
         res.status(200).json({
             message: "Logout successful"
@@ -290,9 +306,211 @@ const logout = async (req, res) => {
 };
 
 
+// ======================================================
+// FORGOT PASSWORD
+// ======================================================
+
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                message: "Email is required"
+            });
+        }
+
+        const user = await User.findOne({ email });
+
+        /*
+         IMPORTANT SECURITY PRACTICE:
+
+         We don't reveal whether the email exists.
+         This prevents attackers from discovering registered emails.
+        */
+
+        if (!user) {
+            return res.status(200).json({
+                message:
+                    "If an account exists with this email, a password reset link has been generated"
+            });
+        }
+
+        // Remove previous reset tokens
+        await PasswordResetToken.deleteMany({
+            userId: user._id
+        });
+
+        // Generate secure random token
+        const resetToken = crypto.randomBytes(32).toString("hex");
+
+        // Hash token before storing
+        const tokenHash = crypto
+            .createHash("sha256")
+            .update(resetToken)
+            .digest("hex");
+
+        // Token expires in 15 minutes
+        const expiresAt = new Date(
+            Date.now() + 15 * 60 * 1000
+        );
+
+        await PasswordResetToken.create({
+            userId: user._id,
+            tokenHash,
+            expiresAt
+        });
+
+        /*
+         DEVELOPMENT ONLY
+
+         In a real application, this token would be sent
+         through an email service.
+
+         We return it here temporarily so you can test
+         the complete flow with Postman.
+        */
+
+        res.status(200).json({
+            message:
+                "If an account exists with this email, a password reset link has been generated",
+
+            resetToken: resetToken,
+
+            expiresIn: "15 minutes"
+        });
+
+    } catch (error) {
+        console.error("Forgot password error:", error);
+
+        res.status(500).json({
+            message: "Server error while processing password reset"
+        });
+    }
+};
+
+
+// ======================================================
+// RESET PASSWORD
+// ======================================================
+
+const resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        if (!token || !newPassword) {
+            return res.status(400).json({
+                message: "Token and new password are required"
+            });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({
+                message: "Password must contain at least 8 characters"
+            });
+        }
+
+        // Hash the token received from the user
+        const tokenHash = crypto
+            .createHash("sha256")
+            .update(token)
+            .digest("hex");
+
+        // Find stored token
+        const storedToken = await PasswordResetToken.findOne({
+            tokenHash
+        });
+
+        if (!storedToken) {
+            return res.status(400).json({
+                message: "Invalid or expired reset token"
+            });
+        }
+
+        if (storedToken.used) {
+            return res.status(400).json({
+                message: "Reset token has already been used"
+            });
+        }
+
+        if (storedToken.expiresAt < new Date()) {
+            return res.status(400).json({
+                message: "Reset token has expired"
+            });
+        }
+
+        // Find user
+        const user = await User.findById(
+            storedToken.userId
+        );
+
+        if (!user) {
+            return res.status(400).json({
+                message: "User not found"
+            });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(
+            newPassword,
+            12
+        );
+
+        user.password = hashedPassword;
+
+        await user.save();
+
+        // Mark reset token as used
+        storedToken.used = true;
+
+        await storedToken.save();
+
+        /*
+         SECURITY:
+
+         Revoke all existing refresh tokens.
+         This logs the user out from existing sessions.
+        */
+
+        await RefreshToken.updateMany(
+            {
+                userId: user._id,
+                revoked: false
+            },
+            {
+                revoked: true
+            }
+        );
+
+        // Clear cookies from current browser
+        res.clearCookie("accessToken");
+
+        res.clearCookie("refreshToken");
+
+        res.status(200).json({
+            message:
+                "Password reset successful. Please login again."
+        });
+
+    } catch (error) {
+        console.error("Reset password error:", error);
+
+        res.status(500).json({
+            message: "Server error while resetting password"
+        });
+    }
+};
+
+
+// ======================================================
+// EXPORT CONTROLLERS
+// ======================================================
+
 module.exports = {
     register,
     login,
     refreshAccessToken,
-    logout
+    logout,
+    forgotPassword,
+    resetPassword
 };
