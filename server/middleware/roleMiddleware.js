@@ -1,20 +1,61 @@
-const authorize = (...allowedRoles) => {
+// ======================================================
+// ROLE-BASED AUTHORIZATION MIDDLEWARE
+// ======================================================
+
+const authorizeRoles = (...allowedRoles) => {
+
     return (req, res, next) => {
+
+        // ==================================================
+        // CHECK AUTHENTICATION
+        // ==================================================
+
+        // authMiddleware must run before this middleware.
+        // It attaches the authenticated user to req.user.
 
         if (!req.user) {
             return res.status(401).json({
-                message: "Not authenticated"
+                success: false,
+                message: "Authentication required"
             });
         }
 
-        if (!allowedRoles.includes(req.user.role)) {
+
+        // ==================================================
+        // CHECK USER ROLE
+        // ==================================================
+
+        if (!req.user.role) {
             return res.status(403).json({
-                message: "Access denied"
+                success: false,
+                message: "User role is not defined"
             });
         }
+
+
+        // ==================================================
+        // CHECK ALLOWED ROLES
+        // ==================================================
+
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied. You do not have permission."
+            });
+        }
+
+
+        // ==================================================
+        // AUTHORIZATION SUCCESSFUL
+        // ==================================================
 
         next();
     };
 };
 
-module.exports = authorize;
+
+// ======================================================
+// EXPORT MIDDLEWARE
+// ======================================================
+
+module.exports = authorizeRoles;
