@@ -6,9 +6,11 @@ const User = require("../models/User");
 const RefreshToken = require("../models/RefreshToken");
 const PasswordResetToken = require("../models/PasswordResetToken");
 
+const transporter = require("../config/mailer");
+
 
 // ======================================================
-// HELPER: CREATE ACCESS TOKEN
+// ACCESS TOKEN
 // ======================================================
 
 const generateAccessToken = (user) => {
@@ -26,7 +28,7 @@ const generateAccessToken = (user) => {
 
 
 // ======================================================
-// HELPER: CREATE REFRESH TOKEN
+// REFRESH TOKEN
 // ======================================================
 
 const generateRefreshToken = () => {
@@ -40,6 +42,7 @@ const generateRefreshToken = () => {
 
 const register = async (req, res) => {
     try {
+
         const { name, email, password } = req.body;
 
         if (!name || !email || !password) {
@@ -48,7 +51,9 @@ const register = async (req, res) => {
             });
         }
 
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({
+            email: email.toLowerCase()
+        });
 
         if (existingUser) {
             return res.status(409).json({
@@ -60,26 +65,209 @@ const register = async (req, res) => {
 
         const user = await User.create({
             name,
-            email,
+            email: email.toLowerCase(),
             password: hashedPassword,
-            role: "user"
+            role: "user",
+            emailVerified: false
         });
 
+
+        // ==================================================
+        // CREATE EMAIL VERIFICATION TOKEN
+        // ==================================================
+
+        const verificationToken =
+            crypto.randomBytes(32).toString("hex");
+
+        const verificationTokenHash =
+            crypto
+                .createHash("sha256")
+                .update(verificationToken)
+                .digest("hex");
+
+
+        const EmailVerificationToken = require("../models/EmailVerificationToken");
+
+        await EmailVerificationToken.create({
+            user: user._id,
+            tokenHash: verificationTokenHash,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+        });
+
+
+        // ==================================================
+        // SEND VERIFICATION EMAIL
+        // ==================================================
+
+        const backendUrl =
+            process.env.BACKEND_URL ||
+            `http://localhost:${process.env.PORT || 5000}`;
+
+        const verificationUrl =
+            `${backendUrl}/api/auth/verify-email?token=${verificationToken}`;
+
+
+        try {
+
+            await transporter.sendMail({
+                from:
+                    process.env.EMAIL_FROM ||
+                    process.env.EMAIL_USER,
+
+                to: user.email,
+
+                subject: "Verify your AuthForge account",
+
+                html: `
+                    <div style="font-family: Arial, sans-serif; padding: 30px;">
+
+                        <h2>Welcome to AuthForge, ${user.name}!</h2>
+
+                        <p>
+                            Your account has been created successfully.
+                        </p>
+
+                        <p>
+                            Please verify your email address by clicking
+                            the button below.
+                        </p>
+
+                        <a
+                            href="${verificationUrl}"
+                            style="
+                                display:inline-block;
+                                padding:12px 20px;
+                                background:#4f46e5;
+                                color:white;
+                                text-decoration:none;
+                                border-radius:6px;
+                            "
+                        >
+                            Verify Email
+                        </a>
+
+                        <p style="margin-top:20px;">
+                            This link will expire in 15 minutes.
+                        </p>
+
+                    </div>
+                `
+            });
+
+            console.log(
+                "Verification email sent successfully ✅"
+            );
+
+        } catch (emailError) {
+
+            console.error(
+                "Verification email error:",
+                emailError.message
+            );
+
+            return res.status(500).json({
+                message:
+                    "Account created but verification email could not be sent"
+            });
+        }
+
+
         res.status(201).json({
-            message: "User registered successfully",
+            message:
+                "Registration successful. Please check your email to verify your account.",
+
             user: {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                emailVerified: user.emailVerified
             }
         });
 
     } catch (error) {
-        console.error("Register error:", error);
+
+        console.error(
+            "Register error:",
+            error
+        );
 
         res.status(500).json({
             message: "Server error during registration"
+        });
+    }
+};
+
+
+// ======================================================
+// VERIFY EMAIL
+// ======================================================
+
+const verifyEmail = async (req, res) => {
+    try {
+
+        const { token } = req.query;
+
+        if (!token) {
+            return res.status(400).json({
+                message: "Verification token is required"
+            });
+        }
+
+
+        const tokenHash =
+            crypto
+                .createHash("sha256")
+                .update(token)
+                .digest("hex");
+
+
+        const EmailVerificationToken = require("../models/EmailVerificationToken");
+
+        const storedToken = await EmailVerificationToken.findOne({
+            tokenHash,
+            expiresAt: {
+                $gt: new Date()
+            }
+        });
+
+        if (!storedToken) {
+            return res.status(400).json({
+                message: "Invalid or expired verification token"
+            });
+        }
+
+
+        const user = await User.findById(storedToken.user);
+
+        if (!user) {
+            return res.status(400).json({
+                message: "User not found"
+            });
+        }
+
+
+        user.emailVerified = true;
+        await user.save();
+
+        await EmailVerificationToken.deleteOne({ _id: storedToken._id });
+
+
+        res.status(200).json({
+            message:
+                "Email verified successfully. You can now login."
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Email verification error:",
+            error
+        );
+
+        res.status(500).json({
+            message:
+                "Server error during email verification"
         });
     }
 };
@@ -91,6 +279,7 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
     try {
+
         const { email, password } = req.body;
 
         if (!email || !password) {
@@ -99,7 +288,11 @@ const login = async (req, res) => {
             });
         }
 
-        const user = await User.findOne({ email });
+
+        const user = await User.findOne({
+            email: email.toLowerCase()
+        });
+
 
         if (!user) {
             return res.status(401).json({
@@ -107,10 +300,21 @@ const login = async (req, res) => {
             });
         }
 
-        const passwordMatch = await bcrypt.compare(
-            password,
-            user.password
-        );
+
+        if (!user.emailVerified) {
+            return res.status(403).json({
+                message:
+                    "Please verify your email before logging in"
+            });
+        }
+
+
+        const passwordMatch =
+            await bcrypt.compare(
+                password,
+                user.password
+            );
+
 
         if (!passwordMatch) {
             return res.status(401).json({
@@ -118,51 +322,77 @@ const login = async (req, res) => {
             });
         }
 
-        // Create access token
-        const accessToken = generateAccessToken(user);
 
-        // Create refresh token
-        const refreshToken = generateRefreshToken();
+        const accessToken =
+            generateAccessToken(user);
 
-        // Hash refresh token before storing it
-        const refreshTokenHash = crypto
-            .createHash("sha256")
-            .update(refreshToken)
-            .digest("hex");
+        const refreshToken =
+            generateRefreshToken();
+
+
+        const refreshTokenHash =
+            crypto
+                .createHash("sha256")
+                .update(refreshToken)
+                .digest("hex");
+
 
         await RefreshToken.create({
             userId: user._id,
             tokenHash: refreshTokenHash,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            expiresAt:
+                new Date(
+                    Date.now() +
+                    7 * 24 * 60 * 60 * 1000
+                )
         });
 
-        // Store tokens in HTTP-only cookies
-        res.cookie("accessToken", accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 15 * 60 * 1000
-        });
 
-        res.cookie("refreshToken", refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
+        res.cookie(
+            "accessToken",
+            accessToken,
+            {
+                httpOnly: true,
+                secure:
+                    process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 15 * 60 * 1000
+            }
+        );
+
+
+        res.cookie(
+            "refreshToken",
+            refreshToken,
+            {
+                httpOnly: true,
+                secure:
+                    process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge:
+                    7 * 24 * 60 * 60 * 1000
+            }
+        );
+
 
         res.status(200).json({
             message: "Login successful",
+
             user: {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                emailVerified: user.emailVerified
             }
         });
 
     } catch (error) {
-        console.error("Login error:", error);
+
+        console.error(
+            "Login error:",
+            error
+        );
 
         res.status(500).json({
             message: "Server error during login"
@@ -172,12 +402,15 @@ const login = async (req, res) => {
 
 
 // ======================================================
-// REFRESH TOKEN
+// REFRESH ACCESS TOKEN
 // ======================================================
 
 const refreshAccessToken = async (req, res) => {
     try {
-        const refreshToken = req.cookies.refreshToken;
+
+        const refreshToken =
+            req.cookies.refreshToken;
+
 
         if (!refreshToken) {
             return res.status(401).json({
@@ -185,14 +418,19 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
-        const tokenHash = crypto
-            .createHash("sha256")
-            .update(refreshToken)
-            .digest("hex");
 
-        const storedToken = await RefreshToken.findOne({
-            tokenHash
-        });
+        const tokenHash =
+            crypto
+                .createHash("sha256")
+                .update(refreshToken)
+                .digest("hex");
+
+
+        const storedToken =
+            await RefreshToken.findOne({
+                tokenHash
+            });
+
 
         if (!storedToken) {
             return res.status(401).json({
@@ -200,19 +438,28 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
+
         if (storedToken.revoked) {
             return res.status(401).json({
-                message: "Refresh token has been revoked"
+                message:
+                    "Refresh token has been revoked"
             });
         }
+
 
         if (storedToken.expiresAt < new Date()) {
             return res.status(401).json({
-                message: "Refresh token has expired"
+                message:
+                    "Refresh token has expired"
             });
         }
 
-        const user = await User.findById(storedToken.userId);
+
+        const user =
+            await User.findById(
+                storedToken.userId
+            );
+
 
         if (!user) {
             return res.status(401).json({
@@ -220,49 +467,79 @@ const refreshAccessToken = async (req, res) => {
             });
         }
 
-        // Revoke old token
+
         storedToken.revoked = true;
+
         await storedToken.save();
 
-        // Generate new tokens
-        const newAccessToken = generateAccessToken(user);
 
-        const newRefreshToken = generateRefreshToken();
+        const newAccessToken =
+            generateAccessToken(user);
 
-        const newRefreshTokenHash = crypto
-            .createHash("sha256")
-            .update(newRefreshToken)
-            .digest("hex");
+        const newRefreshToken =
+            generateRefreshToken();
+
+
+        const newRefreshTokenHash =
+            crypto
+                .createHash("sha256")
+                .update(newRefreshToken)
+                .digest("hex");
+
 
         await RefreshToken.create({
             userId: user._id,
             tokenHash: newRefreshTokenHash,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            expiresAt:
+                new Date(
+                    Date.now() +
+                    7 * 24 * 60 * 60 * 1000
+                )
         });
 
-        res.cookie("accessToken", newAccessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 15 * 60 * 1000
-        });
 
-        res.cookie("refreshToken", newRefreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
+        res.cookie(
+            "accessToken",
+            newAccessToken,
+            {
+                httpOnly: true,
+                secure:
+                    process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 15 * 60 * 1000
+            }
+        );
+
+
+        res.cookie(
+            "refreshToken",
+            newRefreshToken,
+            {
+                httpOnly: true,
+                secure:
+                    process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge:
+                    7 * 24 * 60 * 60 * 1000
+            }
+        );
+
 
         res.status(200).json({
-            message: "Tokens refreshed successfully"
+            message:
+                "Tokens refreshed successfully"
         });
 
     } catch (error) {
-        console.error("Refresh token error:", error);
+
+        console.error(
+            "Refresh token error:",
+            error
+        );
 
         res.status(500).json({
-            message: "Server error while refreshing token"
+            message:
+                "Server error while refreshing token"
         });
     }
 };
@@ -274,13 +551,19 @@ const refreshAccessToken = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        const refreshToken = req.cookies.refreshToken;
+
+        const refreshToken =
+            req.cookies.refreshToken;
+
 
         if (refreshToken) {
-            const tokenHash = crypto
-                .createHash("sha256")
-                .update(refreshToken)
-                .digest("hex");
+
+            const tokenHash =
+                crypto
+                    .createHash("sha256")
+                    .update(refreshToken)
+                    .digest("hex");
+
 
             await RefreshToken.findOneAndUpdate(
                 { tokenHash },
@@ -288,19 +571,25 @@ const logout = async (req, res) => {
             );
         }
 
-        res.clearCookie("accessToken");
 
+        res.clearCookie("accessToken");
         res.clearCookie("refreshToken");
+
 
         res.status(200).json({
             message: "Logout successful"
         });
 
     } catch (error) {
-        console.error("Logout error:", error);
+
+        console.error(
+            "Logout error:",
+            error
+        );
 
         res.status(500).json({
-            message: "Server error during logout"
+            message:
+                "Server error during logout"
         });
     }
 };
@@ -312,7 +601,9 @@ const logout = async (req, res) => {
 
 const forgotPassword = async (req, res) => {
     try {
+
         const { email } = req.body;
+
 
         if (!email) {
             return res.status(400).json({
@@ -320,14 +611,12 @@ const forgotPassword = async (req, res) => {
             });
         }
 
-        const user = await User.findOne({ email });
 
-        /*
-         IMPORTANT SECURITY PRACTICE:
+        const user =
+            await User.findOne({
+                email: email.toLowerCase()
+            });
 
-         We don't reveal whether the email exists.
-         This prevents attackers from discovering registered emails.
-        */
 
         if (!user) {
             return res.status(200).json({
@@ -336,55 +625,76 @@ const forgotPassword = async (req, res) => {
             });
         }
 
-        // Remove previous reset tokens
+
         await PasswordResetToken.deleteMany({
             userId: user._id
         });
 
-        // Generate secure random token
-        const resetToken = crypto.randomBytes(32).toString("hex");
 
-        // Hash token before storing
-        const tokenHash = crypto
-            .createHash("sha256")
-            .update(resetToken)
-            .digest("hex");
+        const resetToken =
+            crypto.randomBytes(32).toString("hex");
 
-        // Token expires in 15 minutes
-        const expiresAt = new Date(
-            Date.now() + 15 * 60 * 1000
-        );
+
+        const tokenHash =
+            crypto
+                .createHash("sha256")
+                .update(resetToken)
+                .digest("hex");
+
 
         await PasswordResetToken.create({
             userId: user._id,
             tokenHash,
-            expiresAt
+            expiresAt:
+                new Date(
+                    Date.now() +
+                    15 * 60 * 1000
+                )
         });
 
-        /*
-         DEVELOPMENT ONLY
 
-         In a real application, this token would be sent
-         through an email service.
+        const frontendUrl = process.env.FRONTEND_URL;
+        const resetLink = frontendUrl 
+            ? `${frontendUrl}/reset-password?token=${resetToken}`
+            : `Token for POST /api/auth/reset-password: ${resetToken}`;
 
-         We return it here temporarily so you can test
-         the complete flow with Postman.
-        */
+        try {
+            await transporter.sendMail({
+                from:
+                    process.env.EMAIL_FROM ||
+                    process.env.EMAIL_USER,
+                to: user.email,
+                subject: "Reset your AuthForge password",
+                html: `
+                    <div style="font-family: Arial, sans-serif; padding: 30px;">
+                        <h2>Password Reset Request</h2>
+                        <p>We received a request to reset your password.</p>
+                        <p>Use the following link or token to reset your password:</p>
+                        <p><strong>${resetLink}</strong></p>
+                        <p style="margin-top:20px;">This token will expire in 15 minutes.</p>
+                    </div>
+                `
+            });
+            console.log("Password reset email sent successfully ✅");
+        } catch (emailError) {
+            console.error("Password reset email error:", emailError.message);
+        }
 
         res.status(200).json({
             message:
-                "If an account exists with this email, a password reset link has been generated",
-
-            resetToken: resetToken,
-
-            expiresIn: "15 minutes"
+                "If an account exists with this email, a password reset link has been generated"
         });
 
     } catch (error) {
-        console.error("Forgot password error:", error);
+
+        console.error(
+            "Forgot password error:",
+            error
+        );
 
         res.status(500).json({
-            message: "Server error while processing password reset"
+            message:
+                "Server error while processing password reset"
         });
     }
 };
@@ -396,53 +706,71 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
     try {
-        const { token, newPassword } = req.body;
+
+        const {
+            token,
+            newPassword
+        } = req.body;
+
 
         if (!token || !newPassword) {
             return res.status(400).json({
-                message: "Token and new password are required"
+                message:
+                    "Token and new password are required"
             });
         }
+
 
         if (newPassword.length < 8) {
             return res.status(400).json({
-                message: "Password must contain at least 8 characters"
+                message:
+                    "Password must contain at least 8 characters"
             });
         }
 
-        // Hash the token received from the user
-        const tokenHash = crypto
-            .createHash("sha256")
-            .update(token)
-            .digest("hex");
 
-        // Find stored token
-        const storedToken = await PasswordResetToken.findOne({
-            tokenHash
-        });
+        const tokenHash =
+            crypto
+                .createHash("sha256")
+                .update(token)
+                .digest("hex");
+
+
+        const storedToken =
+            await PasswordResetToken.findOne({
+                tokenHash
+            });
+
 
         if (!storedToken) {
             return res.status(400).json({
-                message: "Invalid or expired reset token"
+                message:
+                    "Invalid or expired reset token"
             });
         }
+
 
         if (storedToken.used) {
             return res.status(400).json({
-                message: "Reset token has already been used"
+                message:
+                    "Reset token has already been used"
             });
         }
+
 
         if (storedToken.expiresAt < new Date()) {
             return res.status(400).json({
-                message: "Reset token has expired"
+                message:
+                    "Reset token has expired"
             });
         }
 
-        // Find user
-        const user = await User.findById(
-            storedToken.userId
-        );
+
+        const user =
+            await User.findById(
+                storedToken.userId
+            );
+
 
         if (!user) {
             return res.status(400).json({
@@ -450,27 +778,21 @@ const resetPassword = async (req, res) => {
             });
         }
 
-        // Hash new password
-        const hashedPassword = await bcrypt.hash(
-            newPassword,
-            12
-        );
 
-        user.password = hashedPassword;
+        user.password =
+            await bcrypt.hash(
+                newPassword,
+                12
+            );
+
 
         await user.save();
 
-        // Mark reset token as used
+
         storedToken.used = true;
 
         await storedToken.save();
 
-        /*
-         SECURITY:
-
-         Revoke all existing refresh tokens.
-         This logs the user out from existing sessions.
-        */
 
         await RefreshToken.updateMany(
             {
@@ -482,10 +804,10 @@ const resetPassword = async (req, res) => {
             }
         );
 
-        // Clear cookies from current browser
-        res.clearCookie("accessToken");
 
+        res.clearCookie("accessToken");
         res.clearCookie("refreshToken");
+
 
         res.status(200).json({
             message:
@@ -493,21 +815,27 @@ const resetPassword = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Reset password error:", error);
+
+        console.error(
+            "Reset password error:",
+            error
+        );
 
         res.status(500).json({
-            message: "Server error while resetting password"
+            message:
+                "Server error while resetting password"
         });
     }
 };
 
 
 // ======================================================
-// EXPORT CONTROLLERS
+// EXPORT
 // ======================================================
 
 module.exports = {
     register,
+    verifyEmail,
     login,
     refreshAccessToken,
     logout,
