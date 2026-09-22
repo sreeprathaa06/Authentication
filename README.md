@@ -58,6 +58,10 @@ From within the `server` directory:
   ```bash
   npm run start
   ```
+- **Test suite**:
+  ```bash
+  npm run test
+  ```
 
 ## 6. API Endpoints
 
