@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 const cookieParser = require("cookie-parser");
 const helmet = require("helmet");
+const mongoose = require("mongoose");
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
@@ -45,7 +46,24 @@ app.use(cookieParser());
 
 app.get("/", (req, res) => {
     res.status(200).json({
+        success: true,
         message: "AuthForge API is running"
+    });
+});
+
+
+// ======================================================
+// HEALTH CHECK
+// ======================================================
+
+app.get("/api/health", (req, res) => {
+    const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+    
+    res.status(200).json({
+        success: true,
+        message: "API is running smoothly",
+        environment: process.env.NODE_ENV || "development",
+        database: dbStatus
     });
 });
 
@@ -63,6 +81,7 @@ app.use("/api/auth", authRoutes);
 
 app.use((req, res) => {
     res.status(404).json({
+        success: false,
         message: "Route not found",
         path: req.originalUrl
     });
@@ -77,6 +96,7 @@ app.use((err, req, res, next) => {
     console.error("Server error:", err);
 
     res.status(500).json({
+        success: false,
         message: "Internal server error"
     });
 });
@@ -107,5 +127,8 @@ const startServer = async () => {
         process.exit(1);
     }
 };
+if (process.env.NODE_ENV !== "test") {
+    startServer();
+}
 
-startServer();
+module.exports = app;
