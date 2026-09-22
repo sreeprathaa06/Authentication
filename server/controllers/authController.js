@@ -45,19 +45,14 @@ const register = async (req, res) => {
 
         const { name, email, password } = req.body;
 
-        if (!name || !email || !password) {
-            return res.status(400).json({
-                message: "Name, email and password are required"
-            });
-        }
-
         const existingUser = await User.findOne({
             email: email.toLowerCase()
         });
 
         if (existingUser) {
             return res.status(409).json({
-                message: "User already exists"
+            success: false,
+            message: "User already exists"
             });
         }
 
@@ -166,13 +161,15 @@ const register = async (req, res) => {
             );
 
             return res.status(500).json({
-                message:
+            success: false,
+            message:
                     "Account created but verification email could not be sent"
             });
         }
 
 
         res.status(201).json({
+            success: true,
             message:
                 "Registration successful. Please check your email to verify your account.",
 
@@ -193,6 +190,7 @@ const register = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message: "Server error during registration"
         });
     }
@@ -210,7 +208,8 @@ const verifyEmail = async (req, res) => {
 
         if (!token) {
             return res.status(400).json({
-                message: "Verification token is required"
+            success: false,
+            message: "Verification token is required"
             });
         }
 
@@ -233,7 +232,8 @@ const verifyEmail = async (req, res) => {
 
         if (!storedToken) {
             return res.status(400).json({
-                message: "Invalid or expired verification token"
+            success: false,
+            message: "Invalid or expired verification token"
             });
         }
 
@@ -242,7 +242,8 @@ const verifyEmail = async (req, res) => {
 
         if (!user) {
             return res.status(400).json({
-                message: "User not found"
+            success: false,
+            message: "User not found"
             });
         }
 
@@ -254,6 +255,7 @@ const verifyEmail = async (req, res) => {
 
 
         res.status(200).json({
+            success: true,
             message:
                 "Email verified successfully. You can now login."
         });
@@ -266,6 +268,7 @@ const verifyEmail = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message:
                 "Server error during email verification"
         });
@@ -282,13 +285,6 @@ const login = async (req, res) => {
 
         const { email, password } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({
-                message: "Email and password are required"
-            });
-        }
-
-
         const user = await User.findOne({
             email: email.toLowerCase()
         });
@@ -296,14 +292,16 @@ const login = async (req, res) => {
 
         if (!user) {
             return res.status(401).json({
-                message: "Invalid email or password"
+            success: false,
+            message: "Invalid email or password"
             });
         }
 
 
         if (!user.emailVerified) {
             return res.status(403).json({
-                message:
+            success: false,
+            message:
                     "Please verify your email before logging in"
             });
         }
@@ -318,7 +316,8 @@ const login = async (req, res) => {
 
         if (!passwordMatch) {
             return res.status(401).json({
-                message: "Invalid email or password"
+            success: false,
+            message: "Invalid email or password"
             });
         }
 
@@ -376,6 +375,7 @@ const login = async (req, res) => {
 
 
         res.status(200).json({
+            success: true,
             message: "Login successful",
 
             user: {
@@ -395,6 +395,7 @@ const login = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message: "Server error during login"
         });
     }
@@ -414,7 +415,8 @@ const refreshAccessToken = async (req, res) => {
 
         if (!refreshToken) {
             return res.status(401).json({
-                message: "Refresh token not found"
+            success: false,
+            message: "Refresh token not found"
             });
         }
 
@@ -434,22 +436,29 @@ const refreshAccessToken = async (req, res) => {
 
         if (!storedToken) {
             return res.status(401).json({
-                message: "Invalid refresh token"
+            success: false,
+            message: "Invalid refresh token"
             });
         }
 
 
         if (storedToken.revoked) {
+            // Token reuse detected - revoke all tokens for this user
+            await RefreshToken.updateMany(
+                { userId: storedToken.userId },
+                { revoked: true }
+            );
             return res.status(401).json({
-                message:
-                    "Refresh token has been revoked"
+            success: false,
+            message: "Refresh token reuse detected. All sessions revoked for security."
             });
         }
 
 
         if (storedToken.expiresAt < new Date()) {
             return res.status(401).json({
-                message:
+            success: false,
+            message:
                     "Refresh token has expired"
             });
         }
@@ -463,7 +472,8 @@ const refreshAccessToken = async (req, res) => {
 
         if (!user) {
             return res.status(401).json({
-                message: "User not found"
+            success: false,
+            message: "User not found"
             });
         }
 
@@ -526,6 +536,7 @@ const refreshAccessToken = async (req, res) => {
 
 
         res.status(200).json({
+            success: true,
             message:
                 "Tokens refreshed successfully"
         });
@@ -538,6 +549,7 @@ const refreshAccessToken = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message:
                 "Server error while refreshing token"
         });
@@ -577,6 +589,7 @@ const logout = async (req, res) => {
 
 
         res.status(200).json({
+            success: true,
             message: "Logout successful"
         });
 
@@ -588,6 +601,7 @@ const logout = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message:
                 "Server error during logout"
         });
@@ -604,14 +618,6 @@ const forgotPassword = async (req, res) => {
 
         const { email } = req.body;
 
-
-        if (!email) {
-            return res.status(400).json({
-                message: "Email is required"
-            });
-        }
-
-
         const user =
             await User.findOne({
                 email: email.toLowerCase()
@@ -620,7 +626,8 @@ const forgotPassword = async (req, res) => {
 
         if (!user) {
             return res.status(200).json({
-                message:
+            success: true,
+            message:
                     "If an account exists with this email, a password reset link has been generated"
             });
         }
@@ -681,6 +688,7 @@ const forgotPassword = async (req, res) => {
         }
 
         res.status(200).json({
+            success: true,
             message:
                 "If an account exists with this email, a password reset link has been generated"
         });
@@ -693,6 +701,7 @@ const forgotPassword = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message:
                 "Server error while processing password reset"
         });
@@ -712,23 +721,6 @@ const resetPassword = async (req, res) => {
             newPassword
         } = req.body;
 
-
-        if (!token || !newPassword) {
-            return res.status(400).json({
-                message:
-                    "Token and new password are required"
-            });
-        }
-
-
-        if (newPassword.length < 8) {
-            return res.status(400).json({
-                message:
-                    "Password must contain at least 8 characters"
-            });
-        }
-
-
         const tokenHash =
             crypto
                 .createHash("sha256")
@@ -744,7 +736,8 @@ const resetPassword = async (req, res) => {
 
         if (!storedToken) {
             return res.status(400).json({
-                message:
+            success: false,
+            message:
                     "Invalid or expired reset token"
             });
         }
@@ -752,7 +745,8 @@ const resetPassword = async (req, res) => {
 
         if (storedToken.used) {
             return res.status(400).json({
-                message:
+            success: false,
+            message:
                     "Reset token has already been used"
             });
         }
@@ -760,7 +754,8 @@ const resetPassword = async (req, res) => {
 
         if (storedToken.expiresAt < new Date()) {
             return res.status(400).json({
-                message:
+            success: false,
+            message:
                     "Reset token has expired"
             });
         }
@@ -774,7 +769,8 @@ const resetPassword = async (req, res) => {
 
         if (!user) {
             return res.status(400).json({
-                message: "User not found"
+            success: false,
+            message: "User not found"
             });
         }
 
@@ -810,6 +806,7 @@ const resetPassword = async (req, res) => {
 
 
         res.status(200).json({
+            success: true,
             message:
                 "Password reset successful. Please login again."
         });
@@ -822,6 +819,7 @@ const resetPassword = async (req, res) => {
         );
 
         res.status(500).json({
+            success: false,
             message:
                 "Server error while resetting password"
         });

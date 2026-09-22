@@ -16,7 +16,9 @@ const authorizeRoles = require("../middleware/roleMiddleware");
 
 const {
     registerValidation,
-    loginValidation
+    loginValidation,
+    forgotPasswordValidation,
+    resetPasswordValidation
 } = require("../validators/authValidator");
 
 const validate = require("../middleware/validationMiddleware");
@@ -84,6 +86,7 @@ router.get(
     protect,
     (req, res) => {
         res.status(200).json({
+            success: true,
             message: "You are authenticated",
             user: req.user
         });
@@ -96,6 +99,7 @@ router.get(
     authorizeRoles("admin"),
     (req, res) => {
         res.status(200).json({
+            success: true,
             message: "Welcome Admin",
             user: req.user
         });
@@ -110,12 +114,16 @@ router.post(
 router.post(
     "/forgot-password",
     passwordResetLimiter,
+    forgotPasswordValidation,
+    validate,
     forgotPassword
 );
 
 router.post(
     "/reset-password",
     passwordResetLimiter,
+    resetPasswordValidation,
+    validate,
     resetPassword
 );
 
