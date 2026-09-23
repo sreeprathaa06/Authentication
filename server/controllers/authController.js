@@ -50,10 +50,23 @@ const register = async (req, res) => {
         });
 
         if (existingUser) {
-            return res.status(409).json({
-            success: false,
-            message: "User already exists"
-            });
+            if (existingUser.emailVerified) {
+                return res.status(409).json({
+                    success: false,
+                    message: "User already exists"
+                });
+            } else {
+                // If user exists but is not verified, delete the old record and let them re-register
+                // This acts as a robust fail-safe if verification emails fail or expire
+                await User.deleteOne({ _id: existingUser._id });
+                
+                try {
+                    const EmailVerificationToken = require("../models/EmailVerificationToken");
+                    await EmailVerificationToken.deleteMany({ user: existingUser._id });
+                } catch (err) {
+                    console.error("Cleanup of old tokens failed", err);
+                }
+            }
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
@@ -94,12 +107,12 @@ const register = async (req, res) => {
         // SEND VERIFICATION EMAIL
         // ==================================================
 
-        const backendUrl =
-            process.env.BACKEND_URL ||
-            `http://localhost:${process.env.PORT || 5000}`;
+        const frontendUrl =
+            process.env.FRONTEND_URL ||
+            "http://localhost:5173";
 
         const verificationUrl =
-            `${backendUrl}/api/auth/verify-email?token=${verificationToken}`;
+            `${frontendUrl}/verify-email?token=${verificationToken}`;
 
 
         try {
@@ -160,10 +173,16 @@ const register = async (req, res) => {
                 emailError.message
             );
 
+            // Rollback: delete the user and token if the email fails to send
+            await User.deleteOne({ _id: user._id });
+            if (typeof EmailVerificationToken !== 'undefined') {
+                 await EmailVerificationToken.deleteOne({ user: user._id });
+            }
+
             return res.status(500).json({
             success: false,
             message:
-                    "Account created but verification email could not be sent"
+                    "Server error: Could not send verification email. Please try again."
             });
         }
 
