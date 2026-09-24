@@ -31,6 +31,28 @@ const connectDB = async () => {
             "MongoDB connected successfully ✅"
         );
 
+        try {
+            const collection = mongoose.connection.collection('emailverificationtokens');
+            
+            // Check if collection exists first to avoid errors on fresh db
+            const collections = await mongoose.connection.db.listCollections({ name: 'emailverificationtokens' }).toArray();
+            
+            if (collections.length > 0) {
+                const indexes = await collection.indexes();
+                const hasTokenIndex = indexes.some(idx => idx.name === 'token_1');
+                
+                if (hasTokenIndex) {
+                    await collection.dropIndex('token_1');
+                    console.log("Dropped outdated token_1 index from emailverificationtokens");
+                }
+            }
+        } catch (idxErr) {
+            // Only log if it's a real unexpected error, not just index missing
+            if (idxErr.codeName !== 'IndexNotFound' && idxErr.codeName !== 'NamespaceNotFound') {
+                console.error("Safe index cleanup error:", idxErr.message);
+            }
+        }
+
     } catch (error) {
 
         console.error(
