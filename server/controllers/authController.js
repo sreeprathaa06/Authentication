@@ -203,10 +203,9 @@ const register = async (req, res) => {
 
     } catch (error) {
 
-        console.error(
-            "Register error:",
-            error
-        );
+        const fs = require('fs');
+        fs.writeFileSync('server_error.log', 'Register error:\n' + (error.stack || error));
+        console.error("Register error:", error.stack || error);
 
         res.status(500).json({
             success: false,
