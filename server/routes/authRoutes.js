@@ -84,12 +84,19 @@ router.post(
 router.get(
     "/me",
     protect,
-    (req, res) => {
-        res.status(200).json({
-            success: true,
-            message: "You are authenticated",
-            user: req.user
-        });
+    async (req, res) => {
+        try {
+            const User = require("../models/User");
+            const user = await User.findById(req.user.id);
+            if (!user) return res.status(404).json({ success: false, message: "User not found" });
+            res.status(200).json({
+                success: true,
+                message: "You are authenticated",
+                user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified }
+            });
+        } catch (error) {
+            res.status(500).json({ success: false, message: "Server error" });
+        }
     }
 );
 
