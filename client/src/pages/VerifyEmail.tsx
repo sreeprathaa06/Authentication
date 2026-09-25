@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import { AuthLayout } from '../components/AuthLayout';
@@ -8,6 +8,7 @@ export function VerifyEmail() {
   const token = searchParams.get('token');
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [message, setMessage] = useState('');
+  const hasVerified = useRef(false);
 
   useEffect(() => {
     if (!token) {
@@ -15,6 +16,9 @@ export function VerifyEmail() {
       setMessage('Invalid verification link');
       return;
     }
+
+    if (hasVerified.current) return;
+    hasVerified.current = true;
 
     const verify = async () => {
       try {
