@@ -165,6 +165,10 @@ const register = async (req, res) => {
             console.log(
                 "Verification email sent successfully ✅"
             );
+            console.log("\n=======================================================");
+            console.log("If you didn't receive the email, you can verify using this link:");
+            console.log(verificationUrl);
+            console.log("=======================================================\n");
 
         } catch (emailError) {
 
@@ -172,18 +176,25 @@ const register = async (req, res) => {
                 "Verification email error:",
                 emailError.message
             );
+            
+            console.log("\n=======================================================");
+            console.log("Since email sending failed, use this link to verify your account locally:");
+            console.log(verificationUrl);
+            console.log("=======================================================\n");
 
-            // Rollback: delete the user and token if the email fails to send
-            await User.deleteOne({ _id: user._id });
-            if (typeof EmailVerificationToken !== 'undefined') {
-                 await EmailVerificationToken.deleteOne({ user: user._id });
+            if (process.env.NODE_ENV !== 'development') {
+                // Rollback: delete the user and token if the email fails to send in production
+                await User.deleteOne({ _id: user._id });
+                if (typeof EmailVerificationToken !== 'undefined') {
+                     await EmailVerificationToken.deleteOne({ user: user._id });
+                }
+
+                return res.status(500).json({
+                success: false,
+                message:
+                        "Server error: Could not send verification email. Please try again."
+                });
             }
-
-            return res.status(500).json({
-            success: false,
-            message:
-                    "Server error: Could not send verification email. Please try again."
-            });
         }
 
 
