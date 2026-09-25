@@ -1,24 +1,27 @@
 const fs = require('fs');
+let content = fs.readFileSync('routes/authRoutes.js', 'utf8');
 
-const path = './controllers/authController.js';
-let content = fs.readFileSync(path, 'utf8');
+const regex = /router\.get\(\s*"\/me",\s*protect,\s*\(req, res\) => \{\s*res\.status\(200\)\.json\(\{\s*success: true,\s*message: "You are authenticated",\s*user: req\.user\s*\}\);\s*\}\s*\);/g;
 
-// Replace { message: "..." } with { success: false, message: "..." } for errors
-content = content.replace(/res\.status\((4\d\d|5\d\d)\)\.json\(\{\s*message:/g, 'res.status($1).json({\n            success: false,\n            message:');
-// Replace { message: "..." } with { success: true, message: "..." } for success
-content = content.replace(/res\.status\((2\d\d)\)\.json\(\{\s*message:/g, 'res.status($1).json({\n            success: true,\n            message:');
+const replacement = `router.get(
+    "/me",
+    protect,
+    async (req, res) => {
+        try {
+            const User = require("../models/User");
+            const user = await User.findById(req.user.id);
+            if (!user) return res.status(404).json({ success: false, message: "User not found" });
+            res.status(200).json({
+                success: true,
+                message: "You are authenticated",
+                user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified }
+            });
+        } catch (error) {
+            res.status(500).json({ success: false, message: "Server error" });
+        }
+    }
+);`;
 
-fs.writeFileSync(path, content);
-console.log('authController.js updated');
-
-const middlewarePath = './middleware/validationMiddleware.js';
-let mwContent = fs.readFileSync(middlewarePath, 'utf8');
-mwContent = mwContent.replace(/message: "Validation failed"/g, 'success: false,\n            message: "Validation failed"');
-fs.writeFileSync(middlewarePath, mwContent);
-console.log('validationMiddleware.js updated');
-
-const routesPath = './routes/authRoutes.js';
-let routesContent = fs.readFileSync(routesPath, 'utf8');
-routesContent = routesContent.replace(/res\.status\(200\)\.json\(\{\s*message:/g, 'res.status(200).json({\n            success: true,\n            message:');
-fs.writeFileSync(routesPath, routesContent);
-console.log('authRoutes.js updated');
+content = content.replace(regex, replacement);
+fs.writeFileSync('routes/authRoutes.js', content);
+console.log("Replaced successfully!");
