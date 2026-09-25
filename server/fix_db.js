@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const dns = require('dns');
+
+// Use Google DNS to solve MongoDB SRV DNS resolution problems
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 // Load environment variables
 dotenv.config();
