@@ -1,28 +1,33 @@
-import { type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
 export function AuthLayout({ children, title, subtitle }: { children: ReactNode, title: string, subtitle?: string }) {
   return (
-    <div className="auth-layout">
-      <div className="auth-visual">
-        <div className="auth-branding">
-          <Link to="/" className="navbar-brand" style={{ color: 'white', marginBottom: '2rem', display: 'flex' }}>
-            <ShieldCheck className="brand-icon" />
-            <span>AUTHFORGE</span>
+    <div className="auth-page">
+      <div className="auth-left">
+        <div>
+          <Link to="/" className="nav-brand">
+            <Shield className="icon" size={28} />
+            <span style={{ fontSize: '1.5rem' }}>AuthForge</span>
           </Link>
-          <h2 style={{ fontSize: '3rem', fontWeight: 800, lineHeight: 1.1, color: 'white' }}>
-            Authentication,<br/>forged properly.
-          </h2>
-          <p style={{ marginTop: '1rem', color: '#a1a1aa', fontSize: '1.125rem', maxWidth: '400px' }}>
-            Secure authentication infrastructure for modern applications.
+        </div>
+        <div className="auth-left-content">
+          <h1>Authentication, forged properly.</h1>
+          <p style={{ fontSize: '1.125rem' }}>
+            Secure infrastructure with JWT rotation, role-based access, and stateless session management built right in.
           </p>
         </div>
+        <div>
+          <p className="text-muted" style={{ fontSize: '0.875rem' }}>&copy; {new Date().getFullYear()} AuthForge</p>
+        </div>
       </div>
-      <div className="auth-form-container">
-        <div className="auth-form-wrapper">
-          <h1 className="auth-title">{title}</h1>
-          {subtitle && <p className="auth-subtitle">{subtitle}</p>}
+      <div className="auth-right">
+        <div className="auth-form-container">
+          <div style={{ marginBottom: '2rem' }}>
+            <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{title}</h2>
+            {subtitle && <p className="text-muted">{subtitle}</p>}
+          </div>
           {children}
         </div>
       </div>
