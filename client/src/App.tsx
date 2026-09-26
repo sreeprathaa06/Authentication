@@ -9,9 +9,12 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { Dashboard } from './pages/Dashboard';
+import { Profile } from './pages/Profile';
+import { SecurityPage } from './pages/SecurityPage';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { NotFound } from './pages/NotFound';
 
-import './App.css'; 
+import './index.css'; 
 
 function App() {
   return (
@@ -27,8 +30,9 @@ function App() {
           
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/profile" element={<Dashboard />} />
-            <Route path="/security" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/security" element={<SecurityPage />} />
+            <Route path="/admin" element={<AdminDashboard />} />
           </Route>
           
           <Route path="*" element={<NotFound />} />
