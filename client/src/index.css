@@ -25,6 +25,11 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   
   --nav-height: 72px;
+  --bg-gradient: radial-gradient(circle at top, var(--bg-tertiary), var(--bg-primary));
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 * {
@@ -36,6 +41,8 @@
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-primary);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -230,6 +237,9 @@ p {
   max-width: 800px;
   margin: 0 auto 1.5rem;
   line-height: 1.1;
+  background: linear-gradient(to right, #fff, #a3a3a3);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .hero p {
@@ -283,11 +293,14 @@ p {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  transition: border-color 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .feature-card:hover {
-  border-color: var(--border-strong);
+  border-color: var(--accent);
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(217, 249, 157, 0.05);
 }
 
 .feature-icon {
@@ -451,7 +464,7 @@ p {
 .form-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 2px rgba(217, 249, 157, 0.2);
 }
 
 .form-input::placeholder {
