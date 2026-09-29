@@ -10,9 +10,16 @@ export function Dashboard() {
       <DashNav />
       <main className="dash-main">
         <div className="container">
-          <div className="dash-header">
-            <h1>Welcome back, {user?.name || 'Developer'}</h1>
-            <p>Here's an overview of your authentication status and account details.</p>
+          <div className="dash-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h1 style={{ background: 'linear-gradient(to right, #fff, #a3a3a3)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                Welcome back, {user?.name || 'Developer'}
+              </h1>
+              <p>Here's an overview of your authentication status and account details.</p>
+            </div>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', color: '#000', boxShadow: '0 4px 20px rgba(217, 249, 157, 0.4)' }}>
+              {(user?.name || 'D').charAt(0).toUpperCase()}
+            </div>
           </div>
           
           <div className="dash-grid">
@@ -56,8 +63,9 @@ export function Dashboard() {
           </div>
           
           <div className="section-panel">
-            <div className="panel-header">
+            <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: '1.25rem' }}>Recent Security Activity</h3>
+              <button className="btn btn-secondary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>View All</button>
             </div>
             <div className="panel-body">
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
